@@ -61,19 +61,18 @@ publishtopic = "my/topic/pub1"
 SId = "ODkwODBjOWVmNmE3NDZmYTg5NDI3OGRlZDMwYWY3ODE=UDE6MTI6MTYuNTc="
 cpid = os.environ['CPID']
 env = os.environ['ENV']
+Instance = os.environ['Instance']
 UniqueId = os.environ['AWS_IOT_THING_NAME']
 Discovery_url = os.environ['URL']
 
-a = UniqueId
-if "-" in UniqueId :
-    cpid = UniqueId.split('-')[0]
-    UniqueId = UniqueId.split('-')[1]
+if(Instance == "S"):
+    UniqueId = UniqueId.replace(cpid+"-", "", 1)
 
 print("uniqueId : " + UniqueId)
 print("CPID : " +cpid)
 
 message = "b4pressed"
-TIMEOUT = 10
+TIMEOUT = 30
 
 subqos = QOS.AT_MOST_ONCE
 qos = QOS.AT_LEAST_ONCE
@@ -128,7 +127,7 @@ class IoTConnectSDK:
 
     @property
     def _time(self):
-        return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.000")
+        return datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S.000")
 
     @property
     def protocol(self):
