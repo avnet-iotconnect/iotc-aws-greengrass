@@ -66,6 +66,7 @@ UniqueId = os.environ['AWS_IOT_THING_NAME']
 Discovery_url = os.environ['URL']
 
 if(Instance == "S"):
+    cpid = UniqueId.split("-")[0]
     UniqueId = UniqueId.replace(cpid+"-", "", 1)
 
 print("uniqueId : " + UniqueId)
