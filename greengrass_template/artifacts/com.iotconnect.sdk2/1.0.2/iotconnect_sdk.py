@@ -128,7 +128,7 @@ class IoTConnectSDK:
 
     @property
     def _time(self):
-        return datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S.000")
+        return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.000")
 
     @property
     def protocol(self):
@@ -336,16 +336,8 @@ class IoTConnectSDK:
         self.Publish_client_data_to_core(rpt_topic, json.dumps(data))
         return True
 
-    #def send_data_to_SDK2(self, jsonArray):
-    #    print("Resived data from firmware {}".format(jsonArray))
-    #    rpt_topic = publishtopic
-    #    #rpt_topic = self._pubRpt
-    #    self.Publish_client_data_to_core(rpt_topic, json.dumps(jsonArray))
-    #    return True
-
-    def send_data_to_SDK2(self,jsonArray):
+    def parse_firmware_message(self,jsonArray):
         print("Resived data from firmware {}".format(jsonArray))
-        #rpt_topic = publishtopic
         rpt_topic = self._pubRpt
         print("type of received object : : : :", type(jsonArray))
         jsonArray = json.loads(jsonArray)
@@ -469,7 +461,7 @@ class StreamHandler(client.SubscribeToTopicStreamHandler):
             data = str(event.binary_message.message, "utf-8")
             print("Received new message: " + data)
             print("type of data ============================: ", type(data))
-            SDK.send_data_to_SDK2(data)
+            SDK.parse_firmware_message(data)
             # Handle message.
         except:
             traceback.print_exc()
@@ -491,92 +483,9 @@ operation.activate(request)
 future_response = operation.get_response()
 future_response.result(TIMEOUT)
 
-
 def main():
     global SId, cpid, env, UniqueId, SDK
     SDK = IoTConnectSDK(UniqueId, SId, cpid, env)
-    while True:
-        # dObj = [{
-        #        "uniqueId":UniqueId,
-        #        "time":datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-        #        "data": {
-        #            "Temperature": -2147483649
-        #        }
-        #    }]
-        dObj = {
-            "dt": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "d": [
-                {
-                    "id": UniqueId,
-                    "tg": "parent",
-                    "dt": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                    "d": {
-                        "Temperature": random.randint(30, 50),
-                        "PBit": 1,
-                        "PBoolean": True,
-                        "PDate": datetime.datetime.utcnow().strftime("%Y-%m-%d"),
-                        "PDateTime": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                        "PDecimal": 2.555,
-                        "PInteger": random.randint(30, 50),
-                        "PLong": 123456789,
-                        "PString": "Green Grass parent",
-                        "PTime": "11:44:22",
-                        "PObject": {
-                            "pbit": 0,
-                            "pboolean": True,
-                            "pdate": datetime.datetime.utcnow().strftime("%Y-%m-%d"),
-                            "pdatetime": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                            "pdecimal": 2.555,
-                            "pinteger": 884,
-                            "plong": 999,
-                            "pstring": "green",
-                            "ptime": "11:44:22"
-                        }
-                    }
-                },
-                {
-                    "id": UniqueId+"c1",
-                    "tg": "child1",
-                    "dt": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                    "d": {
-                        "Temperature": random.randint(30, 50),
-                        "cBit": 1,
-                        "cBoolean": True,
-                        "cDate": datetime.datetime.utcnow().strftime("%Y-%m-%d"),
-                        "cDateTime": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                        "cDecimal": 2.555,
-                        "cInteger": random.randint(30, 50),
-                        "cLong": 123456789,
-                        "cString": "Green Grass parent",
-                        "cTime": "1:44:22",
-                        "cObject": {
-                            "cbit": 0,
-                            "cboolean": True,
-                            "cdate": datetime.datetime.utcnow().strftime("%Y-%m-%d"),
-                            "cdatetime": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                            "cdecimal": 2.555,
-                            "cinteger": 884,
-                            "clong": 999,
-                            "cstring": "green",
-                            "ctime": "2:44:22"
-                        }
-                    }
-                }  # ,
-                # {
-                #     "id":UniqueId+"c2",
-                #     "tg": "child1",
-                #     "dt": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                #     "d": {
-                #             "Temperature":random.randint(10, 80)
-                #    }
-                # }
-            ]
-        }
-        # result = SDK.send_data_to_SDK(dObj)
-        # result = SDK.send_data_to_SDK2(dObj)
-        # time.sleep(10)
-        pass
-
 
 if __name__ == "__main__":
     main()
