@@ -50,17 +50,20 @@ def Publish_client_data_to_core(topic,messages):
             print("Error in future()", str(error))        
     except Exception as ex:
         print("Publish error...! ",str(ex))
-    
-    topic = "iotc/rpt/d2gg/sub"
-    
-while True:    
-    
+
+
+   
+while True:
+    topi = "iotc/rpt/d2gg/sub"
+    #data = {"Temperature":random.randint(30, 50)}
+
+    data = {"Pressure":random.randint(100, 500)}
     obj_data = [{
-    "time": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-    "data": {"Temperature":random.randint(0, 80)}
-    }]
-    
-    Publish_client_data_to_core(topic,obj_data)
+       
+        "time": datetime.datetime.now().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+        "data": data
+        }]
+    Publish_client_data_to_core(topi,obj_data)
     print(frequency)
-    time.sleep(frequency)
+    time.sleep(15)
     pass
