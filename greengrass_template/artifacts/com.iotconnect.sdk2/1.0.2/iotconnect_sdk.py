@@ -11,10 +11,13 @@ import ssl
 import urllib.request as urllib
 from urllib.parse import urlparse, quote_plus, urlencode
 import awsiot.greengrasscoreipc
+import awsiot.greengrasscoreipc.clientv2 as clientv2
 import awsiot.greengrasscoreipc.client as client
+import  awsiot.greengrasscoreipc.model
 from awsiot.greengrasscoreipc.model import (
     SubscribeToTopicRequest,
     SubscriptionResponseMessage,
+    UnauthorizedError,
     PublishToIoTCoreRequest,
     IoTCoreMessage,
     QOS,
@@ -78,8 +81,7 @@ TIMEOUT = 30
 subqos = QOS.AT_MOST_ONCE
 qos = QOS.AT_LEAST_ONCE
 
-ipc_client = awsiot.greengrasscoreipc.connect()
-
+ipc_client_v2 =  clientv2.GreengrassCoreIPCClientV2()
 
 class IoTConnectSDK:
     _property = None
@@ -128,7 +130,7 @@ class IoTConnectSDK:
 
     @property
     def _time(self):
-        return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.000")
+        return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S.000")
 
     @property
     def protocol(self):
@@ -143,10 +145,11 @@ class IoTConnectSDK:
 
     @property
     def _timestamp(self):
-        return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S.000")
 
     @property
     def _data_template(self):
+        print("fetching current time")
         try:
             data = {
                 "d": [],
@@ -186,7 +189,7 @@ class IoTConnectSDK:
             name = protocol_cofig["n"]
             protocol_cofig["pf"] = self._pf
             self._subTopic = protocol_cofig["topics"]["c2d"]
-            self.subscribe_to_core(self._subTopic)
+            self.subscribe_to_core_v2(self._subTopic)
             self._pubRpt = protocol_cofig["topics"]["rpt"]
             print(self._pubRpt)
             self._ditopic = protocol_cofig["topics"]["di"]
@@ -215,48 +218,40 @@ class IoTConnectSDK:
 
             if pubtopic != None:
                 if pubtopic == self._ditopic:
-                    obj = self.Publish_client_data_to_core(
+                    obj = self.publish_to_iot_core_v2(
                         pubtopic, json.dumps(data))
                 else:
-                    _obj = self.Publish_client_data_to_core(
+                    _obj = self.publish_to_iot_core_v2(
                         pubtopic, json.dumps(data))
 
         except Exception as ex:
             print("send error...! ", ex)
 
-    def Publish_client_data_to_core(self, topic, messages):
-        print("Publish sending message {}".format(messages))
-        print("sending to topic {}".format(topic))
+    
+    def publish_to_iot_core_v2(self, topic, messages):
+        print("publishing to iot using clientv2()...... ")
+        iot_core_topic = topic
+        
         try:
-            msgstring = json.dumps(messages)
+            ipc_client_v2.publish_to_iot_core(topic_name = iot_core_topic, qos = '1', payload = bytes(messages, 'utf-8'))
+            print(f'Published message to AWS IoT Core: {messages}')
+        except Exception as e:
+            print(f'Failed to publish message to AWS IoT Core: {e}')
 
-            pubrequest = PublishToIoTCoreRequest()
-            pubrequest.topic_name = topic
-            pubrequest.payload = bytes(messages, "utf-8")
-            pubrequest.qos = qos
-            operation = ipc_client.new_publish_to_iot_core()
-            operation.activate(pubrequest)
-            try:
-                future = operation.get_response()
-                print("Future value : :  ", future)
 
-                future.result(25)
-                # future.result(TIMEOUT)
-            except Exception as error:
-                print("Error in future()", str(error))
-        except Exception as ex:
-            print("Publish error...! ", str(ex))
-
-    def subscribe_to_core(self, topic):
+   
+    def subscribe_to_core_v2(self, topic):
         print("Subscribe_to_core {}".format(topic))
+        handler_core = SubHandler()
         try:
-            subrequest_core = SubscribeToIoTCoreRequest()
-            subrequest_core.topic_name = topic
-            subrequest_core.qos = subqos
-            handler_core = SubHandler()
-            operation_core = ipc_client.new_subscribe_to_iot_core(handler_core)
-            future_core = operation_core.activate(subrequest_core)
-            future_core.result(TIMEOUT)
+            resp, operation = ipc_client_v2.subscribe_to_iot_core(
+                topic_name=topic,
+                qos=qos, 
+                on_stream_event=handler_core.on_stream_event,
+                on_stream_error=handler_core.on_stream_error,
+                on_stream_closed=handler_core.on_stream_closed
+            )
+            print("RRESP AND OPERATION" , resp, operation)
         except Exception as ex:
             print("subscribe error...! ", ex)
 
@@ -329,24 +324,12 @@ class IoTConnectSDK:
         except Exception as ex:
             print("Message process failed..." + str(ex))
 
-    def send_data_to_SDK(self, data):
-        print("Resived data from firmware {}".format(data))
-        rpt_topic = publishtopic
-        # rpt_topic = self._pubRpt
-        self.Publish_client_data_to_core(rpt_topic, json.dumps(data))
-        return True
-
-    def parse_firmware_message(self,jsonArray):
-        print("Resived data from firmware {}".format(jsonArray))
+    def send_data_to_SDK2(self,jsonArray):
         rpt_topic = self._pubRpt
-        print("type of received object : : : :", type(jsonArray))
         jsonArray = json.loads(jsonArray)
         try:
             for obj in jsonArray:
-                print(obj)
-                #unId = obj["uniqueId"]
                 unId = self._uniqueId
-                print(unId)
                 time_v = obj["time"]
                 sensorData = obj["data"]
             rpt_data = self._data_template    
@@ -357,7 +340,7 @@ class IoTConnectSDK:
             d_object["d"] = sensorData
             rpt_data["d"].append(d_object)  
             print(rpt_data)  
-            self.Publish_client_data_to_core(rpt_topic, json.dumps(rpt_data))
+            self.publish_to_iot_core_v2(rpt_topic, json.dumps(rpt_data))
             return True
         except Exception as ex:
             print("Send data error ", ex)  
@@ -371,7 +354,7 @@ class IoTConnectSDK:
 
         time.sleep(20)
         ack_topic = self._pubACK
-        self.Publish_client_data_to_core(ack_topic, json.dumps(data))
+        self.publish_to_iot_core_v2(ack_topic, json.dumps(data))
         return True
 
     def get_base_url(self, cpid, env):
@@ -453,39 +436,54 @@ class SubHandler(client.SubscribeToIoTCoreStreamHandler):
 
 
 class StreamHandler(client.SubscribeToTopicStreamHandler):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, SDK):
+        super().__init__(SDK)
 
     def on_stream_event(self, event: SubscriptionResponseMessage) -> None:
         try:
             data = str(event.binary_message.message, "utf-8")
             print("Received new message: " + data)
+            print("TOPIC  : :   " + event.binary_message.context.topic)
             print("type of data ============================: ", type(data))
-            SDK.parse_firmware_message(data)
+            SDK.send_data_to_SDK2(data)
             # Handle message.
         except:
+            print("Error in receiving stream event message.....")
             traceback.print_exc()
 
     def on_stream_error(self, error: Exception) -> bool:
         # Handle error.
+        print("ON STREAM ERROR : : : ", str(error))
         return True  # Return True to close stream, False to keep stream open.
 
     def on_stream_closed(self) -> None:
         # Handle close.
+        print('Subscribe to topic stream closed.')
         pass
 
 
-request = SubscribeToTopicRequest()
-request.topic = subtopic
-handler = StreamHandler()
-operation = ipc_client.new_subscribe_to_topic(handler)
-operation.activate(request)
-future_response = operation.get_response()
-future_response.result(TIMEOUT)
+try:
+    handler = StreamHandler(SDK)
+    _, operation = ipc_client_v2.subscribe_to_topic(topic=subtopic, on_stream_event=handler.on_stream_event,
+                                                        on_stream_error=handler.on_stream_error, on_stream_closed=handler.on_stream_closed)
+    print('Successfully subscribed to topic: ' + subtopic)
+except UnauthorizedError:
+        print('Unauthorized error while subscribing to topic: ' +
+              subtopic)
+        traceback.print_exc()
+      
+except Exception:
+        print('Exception occurred', file=sys.stderr)
+        traceback.print_exc()
+
 
 def main():
     global SId, cpid, env, UniqueId, SDK
     SDK = IoTConnectSDK(UniqueId, SId, cpid, env)
+    while True:
+        print("In WHILE True")
+        time.sleep(10)
+ 
 
 if __name__ == "__main__":
     main()
