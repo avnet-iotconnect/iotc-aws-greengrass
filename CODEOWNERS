@@ -7,6 +7,7 @@
 # review when someone opens a pull request.
 *       @sw-ms-imranbhadelia
 *       @sw-ms-ankitsangani
+        @sw-iot-yashdholakia
 # Order is important; the last matching pattern takes the most
 # precedence. When someone opens a pull request that only
 # modifies JS files, only @js-owner and not the global
