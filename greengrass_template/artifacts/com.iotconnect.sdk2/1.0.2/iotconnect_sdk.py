@@ -1,28 +1,19 @@
+'''AWS Green Grass IoTConnect SDK Code'''
 import sys
 import json
-import os.path
 import time
-import copy
 import datetime
 import traceback
-import random
 import os
-import ssl
+import os.path
 import urllib.request as urllib
-from urllib.parse import urlparse, quote_plus, urlencode
-import awsiot.greengrasscoreipc
-import awsiot.greengrasscoreipc.client as client
+from awsiot.greengrasscoreipc import clientv2
+from awsiot.greengrasscoreipc import client
 from awsiot.greengrasscoreipc.model import (
-    SubscribeToTopicRequest,
     SubscriptionResponseMessage,
-    PublishToIoTCoreRequest,
+    UnauthorizedError,
     IoTCoreMessage,
     QOS,
-    SubscribeToIoTCoreRequest,
-    PublishToTopicRequest,
-    PublishMessage,
-    BinaryMessage
-
 )
 
 OPTION = {
@@ -55,150 +46,122 @@ CMDTYPE = {
     "UCART": "updatecrt"
 }
 
-subtopic = "iotc/rpt/d2gg/sub"
-publishtopic = "my/topic/pub1"
+LOCAL_SUBTOPIC = "iotc/rpt/d2gg/sub"
 
-SId = "ODkwODBjOWVmNmE3NDZmYTg5NDI3OGRlZDMwYWY3ODE=UDE6MTI6MTYuNTc="
+SID = "ODkwODBjOWVmNmE3NDZmYTg5NDI3OGRlZDMwYWY3ODE=UDE6MTI6MTYuNTc="
 cpid = os.environ['CPID']
 env = os.environ['ENV']
 Instance = os.environ['Instance']
 UniqueId = os.environ['AWS_IOT_THING_NAME']
 Discovery_url = os.environ['URL']
 
-if(Instance == "S"):
+if Instance == "S":
     cpid = UniqueId.split("-")[0]
-    UniqueId = UniqueId.replace(cpid+"-", "", 1)
+    UniqueId = UniqueId.replace(cpid + "-", "", 1)
 
 print("uniqueId : " + UniqueId)
 print("CPID : " +cpid)
 
-message = "b4pressed"
-TIMEOUT = 30
+TIMEOUT = 10
 
-subqos = QOS.AT_MOST_ONCE
-qos = QOS.AT_LEAST_ONCE
-
-ipc_client = awsiot.greengrasscoreipc.connect()
+ipc_client_v2 = clientv2.GreengrassCoreIPCClientV2()
 
 
 class IoTConnectSDK:
-    _property = None
-    _config = None
-    _cpId = None
+    '''Class IOTCONNECTSDK'''
+    _cpid = None
     _env = None
-    _sId = None
-    _uniqueId = None
-    _listner_callback = None
-    _listner_device_callback = None
-    _listner_attchng_callback = None
-    _listner_module_callback = None
-    _listner_devicechng_callback = None
-    _listner_rulechng_callback = None
-    _listner_creatchild_callback = None
-    _listner_twin_callback = None
+    _sid = None
+    _uniqueid = None
     _data_json = None
-    _client = None
-    _is_process_started = False
     _base_url = ""
     _pf = None
     _dip = None
-    _thread = None
-    _ruleEval = None
-    _offlineClient = None
-    _lock = None
-    _dispose = False
-    _live_device = []
     _debug = False
     _data_frequency = 60
-    _debug_error_path = None
-    _debug_output_path = None
-    _dftime = None
-    _offlineflag = False
-    _time_s = None
-    _heartbeat_timer = None
-    deletechild = None
-    _listner_deletechild_callback = None
-    _validation = True
-    _getattribute_callback = None
-    _subTopic = None
-    _pubRpt = None
+    _sub_topic = None
+    _pub_rpt = None
     _ditopic = None
-    _pubACK = None
-    _pubFlt = None
-
-    @property
-    def _time(self):
-        return datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S.000")
+    _pub_ack = None
+    _pub_flt = None
 
     @property
     def protocol(self):
+        '''def protocol(self):'''
         try:
             key = OPTION["protocol"]
-            if self._data_json != None and self.has_key(self._data_json, key) and self._data_json[key] != None:
+            if self._data_json is not None and self.has_key(self._data_json,
+                                    key) and self._data_json[key] is not None:
                 return self._data_json[key]
-            else:
-                return None
-        except:
-            print("protocol not initialized")
+        except ImportError as ex:
+            print("protocol not initialized", ex)
+        return None
+
 
     @property
     def _timestamp(self):
-        return datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S.000")
 
     @property
     def _data_template(self):
         try:
             data = {
-                "d": [],
-                "dt": ""
+                "d" : [],
+                "dt" : ""
             }
             data["dt"] = self._timestamp
             return data
-        except Exception as ex:
+        except ImportError as ex:
             print("_data_template ", ex)
+        return None
 
     @property
-    def _Ack_data_template(self):
+    def ack_data_template(self):
+        '''def ack_data_template()'''
         try:
             data = {
                 "dt": "",
                 "d": {
-                    "ack": "",
-                    "type": 0,
-                    "st": 0,
-                    "msg": "",
+                    "ack" : "",
+                    "type" : 0,
+                    "st" : 0,
+                    "msg" : "",
                 }
             }
             data["dt"] = self._timestamp
             return data
-        except Exception as ex:
-            print("_Ack_data_template ", ex)
+        except ImportError as ex:
+            print("ack_data_template ", ex)
+        return None
 
     def has_key(self, data, key):
+        '''def has_key(self):'''
         try:
             return key in data
-        except:
+        except ImportError:
             return False
 
     def init_protocol(self):
+        '''def init_protocol(self):'''
         try:
             protocol_cofig = self.protocol
-            name = protocol_cofig["n"]
             protocol_cofig["pf"] = self._pf
-            self._subTopic = protocol_cofig["topics"]["c2d"]
-            self.subscribe_to_core(self._subTopic)
-            self._pubRpt = protocol_cofig["topics"]["rpt"]
-            print(self._pubRpt)
+            self._sub_topic = protocol_cofig["topics"]["c2d"]
+            self.subscribe_to_core_v2(self._sub_topic)
+            self._pub_rpt = protocol_cofig["topics"]["rpt"]
+            print(self._pub_rpt)
             self._ditopic = protocol_cofig["topics"]["di"]
-            self._pubACK = protocol_cofig["topics"]["ack"]
-            self._pubFlt = protocol_cofig["topics"]["flt"]
-        except Exception as ex:
+            self._pub_ack = protocol_cofig["topics"]["ack"]
+            self._pub_flt = protocol_cofig["topics"]["flt"]
+        except ImportError as ex:
             print("init_protocol", ex)
 
     def _hello_handsake(self, data):
-        self.Send(data, "Di")
+        '''def _hello_handsake():'''
+        self.send_data(data, "Di")
 
-    def Send(self, data, msgtype):
+    def send_data(self, data, msgtype):
+        '''def send_data():'''
         try:
             _obj = None
             pubtopic = None
@@ -206,207 +169,179 @@ class IoTConnectSDK:
             if msgtype == "Di":
                 pubtopic = self._ditopic
             elif msgtype == "CMD_ACK":
-                pubtopic = self._pubACK
+                pubtopic = self._pub_ack
             elif msgtype == "RPT":
-                pubtopic = self._pubRpt
+                pubtopic = self._pub_rpt
 
             else:
-                pubtopic = self._pubFlt
+                pubtopic = self._pub_flt
 
-            if pubtopic != None:
+            if pubtopic is not None:
                 if pubtopic == self._ditopic:
-                    obj = self.Publish_client_data_to_core(
+                    self.publish_to_iot_core_v2(
                         pubtopic, json.dumps(data))
                 else:
-                    _obj = self.Publish_client_data_to_core(
+                    self.publish_to_iot_core_v2(
                         pubtopic, json.dumps(data))
 
-        except Exception as ex:
+        except ImportError as ex:
             print("send error...! ", ex)
 
-    def Publish_client_data_to_core(self, topic, messages):
-        print("Publish sending message {}".format(messages))
-        print("sending to topic {}".format(topic))
+    def publish_to_iot_core_v2(self, topic, messages):
+        '''def publish_to_iot_core_v2():'''
+        iot_core_topic = topic
         try:
-            msgstring = json.dumps(messages)
+            ipc_client_v2.publish_to_iot_core(topic_name = iot_core_topic,
+                                              qos = QOS.AT_LEAST_ONCE,
+                                              payload = bytes(messages, 'utf-8'))
+            print(f'Published message to AWS IoT Core: {messages}')
+        except ImportError as ex:
+            print(f'Failed to publish message to AWS IoT Core: {ex}')
 
-            pubrequest = PublishToIoTCoreRequest()
-            pubrequest.topic_name = topic
-            pubrequest.payload = bytes(messages, "utf-8")
-            pubrequest.qos = qos
-            operation = ipc_client.new_publish_to_iot_core()
-            operation.activate(pubrequest)
-            try:
-                future = operation.get_response()
-                print("Future value : :  ", future)
 
-                future.result(25)
-                # future.result(TIMEOUT)
-            except Exception as error:
-                print("Error in future()", str(error))
-        except Exception as ex:
-            print("Publish error...! ", str(ex))
-
-    def subscribe_to_core(self, topic):
-        print("Subscribe_to_core {}".format(topic))
+    def subscribe_to_core_v2(self, topic):
+        '''def subscribe_to_core_v2():'''
+        print(f"Subscribe_to_core {topic}")
+        handler_core = SubHandler()
         try:
-            subrequest_core = SubscribeToIoTCoreRequest()
-            subrequest_core.topic_name = topic
-            subrequest_core.qos = subqos
-            handler_core = SubHandler()
-            operation_core = ipc_client.new_subscribe_to_iot_core(handler_core)
-            future_core = operation_core.activate(subrequest_core)
-            future_core.result(TIMEOUT)
-        except Exception as ex:
-            print("subscribe error...! ", ex)
+            ipc_client_v2.subscribe_to_iot_core(
+                topic_name = topic,
+                qos = QOS.AT_LEAST_ONCE,
+                on_stream_event = handler_core.on_stream_event,
+                on_stream_error = handler_core.on_stream_error,
+                on_stream_closed = handler_core.on_stream_closed
+            )
+        except ImportError as ex:
+            print("subscribe error...!" , ex)
 
-    def onDeviceCommand(self, callback):
-        if callback:
-            self._listner_device_callback = callback
 
-    def DeviceCallback(self, msg):
+    def device_callback(self, msg):
+        '''def device_callback():'''
         print("\n--- Command Message Received in Firmware ---")
         print(json.dumps(msg))
-        cmdType = None
-        if msg != None:
-            cmdType = msg["ct"] if "ct" in msg else None
-        if cmdType == 0:
-            """
-            * Type    : Public Method "sendAck()"
-            * Usage   : Send device command received acknowledgment to cloud
-            * 
-            * - status Type
-            *     st = 6; // Device command Ack status 
-            *     st = 4; // Failed Ack
-            * - Message Type
-            *     msgType = 5; // for "0x01" device command 
-            """
+        cmd_type = None
+        if msg is not None:
+            cmd_type = msg["ct"] if "ct" in msg else None
+        if cmd_type == 0:
+            # * Type    : Public Method "sendAck()"
+            # * Usage   : Send device command received acknowledgment to cloud
+            # *
+            # * - status Type
+            # *     st = 6; // Device command Ack status
+            # *     st = 4; // Failed Ack
+            # * - Message Type
+            # *     msgType = 5; // for "0x01" device command
             data = msg
-            if data != None:
+            if data is not None:
                 if "id" in data:
                     if "ack" in data and data["ack"]:
                         print("\n---  if ack in data in Firmware ---")
-                        # SDK.sendAckCmd(data["ack"],7,"sucessfull",data["id"])  #fail=4,executed= 5,sucess=7,6=executedack
+                        # SDK.send_ack_cmd(data["ack"],7,"sucessfull",data["id"])
+                        # #fail=4,executed= 5,sucess=7,6=executedack
                 else:
                     if "ack" in data and data["ack"]:
                         print("\n---  if ack in data Received in Firmware ---")
                         # fail=4,executed= 5,sucess=7,6=executedack
-                        self.sendAckCmd(data["ack"], 7, "sucessfull")
+                        self.send_ack_cmd(data["ack"], 7, "sucessfull")
         else:
-            print("rule command", msg)
+            print(f"rule command : {msg}")
 
-    def sendAckCmd(self, ackGuid, status, msg):
+    def send_ack_cmd(self, ack_guid, status, msg):
+        '''def send_ack_cmd():'''
         try:
-            template = self._Ack_data_template
+            template = self.ack_data_template
             template["d"]["type"] = 0
             template["d"]["st"] = status
             template["d"]["msg"] = msg
-            template["d"]["ack"] = ackGuid
-            print("template", template)
+            template["d"]["ack"] = ack_guid
+            print(f"ACK Template : {template}")
             self.send_msg_to_broker(template)
         except Exception as ex:
-            raise (ex)
+            raise ex
 
-    def onMessage(self, msg):
-        # print("\n====================>>>>>>>>>>>>>>>>>>>>>>>\n")
-        # print ("Cloud To Device Message Received::\n",msg)
-        # print("\n<<<<<<<<<<<<<<<<<<<<<<<====================\n")
+    def on_message(self, msg):
+        '''def on_message():'''
         try:
-            if msg == None:
+            if msg is None:
                 return
 
             if "ct" not in msg:
-                print("Command Received : " + json.dumps(msg))
+                print(f"Command Received : {json.dumps(msg)}")
                 return
 
             if msg["ct"] == CMDTYPE["DCOMM"]:
                 print(str(CMDTYPE["DCOMM"])+" DCOMM command received...")
                 print(msg)
-                self.DeviceCallback(msg)
+                self.device_callback(msg)
                 # if self._listner_device_callback != None:
                 # self._listner_device_callback(msg)
 
-        except Exception as ex:
+        except ImportError as ex:
             print("Message process failed..." + str(ex))
 
-    def send_data_to_SDK(self, data):
-        print("Resived data from firmware {}".format(data))
-        rpt_topic = publishtopic
-        # rpt_topic = self._pubRpt
-        self.Publish_client_data_to_core(rpt_topic, json.dumps(data))
-        return True
 
-    #def send_data_to_SDK2(self, jsonArray):
-    #    print("Resived data from firmware {}".format(jsonArray))
-    #    rpt_topic = publishtopic
-    #    #rpt_topic = self._pubRpt
-    #    self.Publish_client_data_to_core(rpt_topic, json.dumps(jsonArray))
-    #    return True
-
-    def send_data_to_SDK2(self,jsonArray):
-        print("Resived data from firmware {}".format(jsonArray))
-        #rpt_topic = publishtopic
-        rpt_topic = self._pubRpt
-        print("type of received object : : : :", type(jsonArray))
-        jsonArray = json.loads(jsonArray)
+    def send_data_to_sdk2(self,json_array):
+        '''def send_data_to_sdk2():'''
+        rpt_topic = self._pub_rpt
+        json_array = json.loads(json_array)
         try:
-            for obj in jsonArray:
-                print(obj)
-                #unId = obj["uniqueId"]
-                unId = self._uniqueId
-                print(unId)
+            for obj in json_array:
+                unid = self._uniqueid
                 time_v = obj["time"]
-                sensorData = obj["data"]
-            rpt_data = self._data_template    
+                sensor_data = obj["data"]
+            rpt_data = self._data_template
             d_object = {}
-            d_object["id"] = unId
+            d_object["id"] = unid
             d_object["tg"] = ""
             d_object["dt"] = time_v
-            d_object["d"] = sensorData
-            rpt_data["d"].append(d_object)  
-            print(rpt_data)  
-            self.Publish_client_data_to_core(rpt_topic, json.dumps(rpt_data))
+            d_object["d"] = sensor_data
+            rpt_data["d"].append(d_object)
+            print("Publishing data to IOT Core")
+            self.publish_to_iot_core_v2(rpt_topic, json.dumps(rpt_data))
             return True
-        except Exception as ex:
-            print("Send data error ", ex)  
+        except ImportError as ex:
+            print("Send data error ", ex)
+        return None
 
 
     def send_msg_to_broker(self, data):
-        print("Sending ACK to Core {}".format(data))
-        data1 = {
-            "Neerav": random.randint(30, 50)
-        }
-
+        '''def send_msg_to_broker():'''
+        print(f"Sending ACK to Core {data}")
         time.sleep(20)
-        ack_topic = self._pubACK
-        self.Publish_client_data_to_core(ack_topic, json.dumps(data))
+        ack_topic = self._pub_ack
+        self.publish_to_iot_core_v2(ack_topic, json.dumps(data))
         return True
 
     def get_base_url(self, cpid, env):
+        '''def get_base_url():'''
         base_url = "/api/v2.1/dsdk/cpid/" + cpid + "/env/" + env + "?pf=aws"
         base_url = Discovery_url + base_url
         print(base_url)
-        res = urllib.urlopen(base_url).read().decode("utf-8")
+        with urllib.urlopen(base_url) as response:
+            res = response.read().decode("utf-8")
         print(res)
         data = json.loads(res)
         return data['d']["bu"], data['d']["pf"], data['d']["dip"]
 
-    def get_call(self, url, uniqueId):
-        url = url+"/uid/"+uniqueId
-        res = urllib.urlopen(url).read().decode("utf-8")
+    def get_call(self, url, uniqueid):
+        '''def get_call():'''
+        url = url + "/uid/" + uniqueid
+        with urllib.urlopen(url) as response:
+            res = response.read().decode("utf-8")
         data = json.loads(res)
         return data
 
-    def process_sync(self, base_url, dip, uniqueid):
+    def process_sync(self, base_url, uniqueid):
+        '''def process_sync():'''
         try:
             response = self.get_call(base_url, uniqueid)
             if self.has_key(response, "d"):
                 response = response["d"]
-                print('[INFO_IN01] '+'[' + str(self._sId)+'_' + str(self._uniqueId) +
-                      "] Device information received successfully: " + self._time, 0)
+                print('[INFO_IN01] '+'[' + str(self._sid)+'_' + str(self._uniqueid) +
+                      "] Device information received successfully: " + self._timestamp, 0)
             else:
-                print('[error01] '+'[' + str(self._sId)+'_' + str(self._uniqueId) +
-                      "] Device information no received : " + self._time, 0)
+                print('[error01] '+'[' + str(self._sid)+'_' + str(self._uniqueid) +
+                      "] Device information no received : " + self._timestamp, 0)
 
             self._data_json = response
             self.init_protocol()
@@ -416,28 +351,26 @@ class IoTConnectSDK:
             if self.has_key(self._data_json, "has") and self._data_json["has"]["d"]:
                 self._hello_handsake({"mt": 204})
 
-        except Exception as ex:
+        except ImportError as ex:
             print("sync call... ", ex)
 
-    def __init__(self, uniqueId, sId, cpid, env):
+    def __init__(self, uniqueid, sid, cpid, env):
 
-        self._sId = sId
-        self._cpId = cpid
+        self._sid = sid
+        self._cpid = cpid
         self._env = env
-        self._uniqueId = uniqueId
+        self._uniqueid = uniqueid
 
         self._base_url, self._pf, self._dip = self.get_base_url(cpid, env)
         print(self._pf)
-        print(self._dip)
-        if self._base_url != None:
-            print('[INFO_IN07] '+'[' + str(self._sId or cpid)+'_' + str(self._uniqueId) +
-                  "] BaseUrl received to sync the device information: " + self._time, 0)
-            self.process_sync(self._base_url, self._dip, self._uniqueId)
+        if self._base_url is not None:
+            print('[INFO_IN07] '+'[' + str(self._sid or cpid)+'_' + str(self._uniqueid) +
+                  "] BaseUrl received to sync the device information: " + self._timestamp, 0)
+            self.process_sync(self._base_url, self._uniqueid)
 
 
 class SubHandler(client.SubscribeToIoTCoreStreamHandler):
-    def __init__(self):
-        super().__init__()
+    '''class SubHandler'''
 
     def on_stream_event(self, event: IoTCoreMessage) -> None:
         try:
@@ -447,136 +380,67 @@ class SubHandler(client.SubscribeToIoTCoreStreamHandler):
             print("payload topic from client dev :", topic_name)
             # Handle message.
             jsonmsg = json.loads(message)
-            SDK.onMessage(jsonmsg)
-        except:
+            SDK.on_message(jsonmsg)
+        except ImportError:
             traceback.print_exc()
 
     def on_stream_error(self, error: Exception) -> bool:
-        # Handle error.
-        return True  # Return True to close stream, False to keep stream open.
+        return True
 
     def on_stream_closed(self) -> None:
-        # Handle close.
         pass
 
 
 class StreamHandler(client.SubscribeToTopicStreamHandler):
-    def __init__(self):
-        super().__init__()
+    '''class StreamHandler'''
 
     def on_stream_event(self, event: SubscriptionResponseMessage) -> None:
         try:
             data = str(event.binary_message.message, "utf-8")
-            print("Received new message: " + data)
-            print("type of data ============================: ", type(data))
-            SDK.send_data_to_SDK2(data)
-            # Handle message.
-        except:
+            print(f"Local Topic :: {event.binary_message.context.topic}")
+            print(f"Received message :: {data}")
+            SDK.send_data_to_sdk2(data)
+        except ImportError:
+            print("Error in receiving stream event message.....")
             traceback.print_exc()
 
     def on_stream_error(self, error: Exception) -> bool:
-        # Handle error.
-        return True  # Return True to close stream, False to keep stream open.
+        print("ON STREAM ERROR :: ", str(error))
+        return True
 
     def on_stream_closed(self) -> None:
-        # Handle close.
-        pass
+        print("Subscribe to topic stream closed.")
 
 
-request = SubscribeToTopicRequest()
-request.topic = subtopic
-handler = StreamHandler()
-operation = ipc_client.new_subscribe_to_topic(handler)
-operation.activate(request)
-future_response = operation.get_response()
-future_response.result(TIMEOUT)
+def sub_local_topic():
+    '''def sub_local_topic():'''
+    try:
+        handler = StreamHandler()
+        ipc_client_v2.subscribe_to_topic(topic=LOCAL_SUBTOPIC,
+                            on_stream_event=handler.on_stream_event,
+                            on_stream_error=handler.on_stream_error,
+                            on_stream_closed=handler.on_stream_closed)
+        print(f"Successfully Subscribed to Local topic: {LOCAL_SUBTOPIC}")
 
+    except UnauthorizedError:
+        print(f"Unauthorized error while subscribing to topic: {LOCAL_SUBTOPIC}")
+        traceback.print_exc()
+
+    except ImportError:
+        print("Exception occurred", file=sys.stderr)
+        traceback.print_exc()
 
 def main():
-    global SId, cpid, env, UniqueId, SDK
-    SDK = IoTConnectSDK(UniqueId, SId, cpid, env)
-    while True:
-        # dObj = [{
-        #        "uniqueId":UniqueId,
-        #        "time":datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-        #        "data": {
-        #            "Temperature": -2147483649
-        #        }
-        #    }]
-        dObj = {
-            "dt": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-            "d": [
-                {
-                    "id": UniqueId,
-                    "tg": "parent",
-                    "dt": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                    "d": {
-                        "Temperature": random.randint(30, 50),
-                        "PBit": 1,
-                        "PBoolean": True,
-                        "PDate": datetime.datetime.utcnow().strftime("%Y-%m-%d"),
-                        "PDateTime": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                        "PDecimal": 2.555,
-                        "PInteger": random.randint(30, 50),
-                        "PLong": 123456789,
-                        "PString": "Green Grass parent",
-                        "PTime": "11:44:22",
-                        "PObject": {
-                            "pbit": 0,
-                            "pboolean": True,
-                            "pdate": datetime.datetime.utcnow().strftime("%Y-%m-%d"),
-                            "pdatetime": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                            "pdecimal": 2.555,
-                            "pinteger": 884,
-                            "plong": 999,
-                            "pstring": "green",
-                            "ptime": "11:44:22"
-                        }
-                    }
-                },
-                {
-                    "id": UniqueId+"c1",
-                    "tg": "child1",
-                    "dt": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                    "d": {
-                        "Temperature": random.randint(30, 50),
-                        "cBit": 1,
-                        "cBoolean": True,
-                        "cDate": datetime.datetime.utcnow().strftime("%Y-%m-%d"),
-                        "cDateTime": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                        "cDecimal": 2.555,
-                        "cInteger": random.randint(30, 50),
-                        "cLong": 123456789,
-                        "cString": "Green Grass parent",
-                        "cTime": "1:44:22",
-                        "cObject": {
-                            "cbit": 0,
-                            "cboolean": True,
-                            "cdate": datetime.datetime.utcnow().strftime("%Y-%m-%d"),
-                            "cdatetime": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                            "cdecimal": 2.555,
-                            "cinteger": 884,
-                            "clong": 999,
-                            "cstring": "green",
-                            "ctime": "2:44:22"
-                        }
-                    }
-                }  # ,
-                # {
-                #     "id":UniqueId+"c2",
-                #     "tg": "child1",
-                #     "dt": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z"),
-                #     "d": {
-                #             "Temperature":random.randint(10, 80)
-                #    }
-                # }
-            ]
-        }
-        # result = SDK.send_data_to_SDK(dObj)
-        # result = SDK.send_data_to_SDK2(dObj)
-        # time.sleep(10)
-        pass
+    '''main'''
+    global SID, cpid, env, UniqueId, SDK
 
+    sub_local_topic()
+
+    # Init SDK
+    SDK = IoTConnectSDK(UniqueId, SID, cpid, env)
+    while True:
+        print("IoTConnectSDK Live...")
+        time.sleep(5)
 
 if __name__ == "__main__":
     main()
